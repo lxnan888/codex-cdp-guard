@@ -1,6 +1,6 @@
 {
   "name": "codex-cdp-guard",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "通过 CDP 自动暂停 Codex 询问倒计时的 Windows 桌面工具",
   "main": "./out/main/index.js",
   "author": "Local",
