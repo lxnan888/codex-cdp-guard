@@ -104,13 +104,14 @@ h1 {
 }
 
 .header-actions {
-  gap: 12px;
+  gap: 10px;
   flex: 0 0 auto;
 }
 
 .status-badge {
   height: 34px;
-  min-width: 94px;
+  width: 128px;
+  flex: 0 0 128px;
   padding: 0 11px;
   display: inline-flex;
   align-items: center;
@@ -122,6 +123,48 @@ h1 {
   border-radius: 999px;
   font-size: 12px;
   font-weight: 620;
+}
+
+.language-switcher {
+  width: 126px;
+  height: 34px;
+  flex: 0 0 126px;
+  padding: 3px 4px 3px 8px;
+  display: grid;
+  grid-template-columns: 18px repeat(2, minmax(0, 1fr));
+  align-items: center;
+  gap: 2px;
+  color: #c4ced7;
+  background: #25313c;
+  border: 1px solid #3a4651;
+  border-radius: 6px;
+}
+
+.language-icon {
+  justify-self: start;
+}
+
+.language-option {
+  min-width: 0;
+  height: 26px;
+  padding: 0;
+  color: #b8c3cc;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.language-option:hover {
+  color: #ffffff;
+  background: #34424e;
+}
+
+.language-option.active {
+  color: #ffffff;
+  background: #476052;
+  box-shadow: inset 0 0 0 1px #5f786a;
 }
 
 .status-connected {
@@ -176,6 +219,12 @@ h1 {
   background: #b74d4d;
 }
 
+.monitor-button {
+  width: 156px;
+  flex: 0 0 156px;
+  white-space: nowrap;
+}
+
 .button-secondary {
   color: #23303c;
   background: #ffffff;
@@ -208,6 +257,10 @@ h1 {
   gap: 12px;
   padding: 18px 20px;
   border-right: 1px solid #e3e8ec;
+}
+
+.metric > div:last-child {
+  min-width: 0;
 }
 
 .metric:last-child {
@@ -245,10 +298,12 @@ h1 {
 
 .metric span {
   display: block;
-  margin-bottom: 5px;
+  min-height: 28px;
+  margin-bottom: 4px;
   color: #687681;
   font-size: 11px;
-  line-height: 1;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 .metric strong {
@@ -485,6 +540,15 @@ h1 {
 }
 
 @media (max-width: 900px) {
+  .app-header {
+    padding: 0 20px;
+    gap: 16px;
+  }
+
+  .header-actions {
+    gap: 8px;
+  }
+
   .status-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

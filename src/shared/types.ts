@@ -4,6 +4,32 @@ export interface MonitorConfig {
   pollIntervalMs: number
 }
 
+export type MonitorMessageKey =
+  | 'config.host.invalid'
+  | 'config.port.invalid'
+  | 'config.pollInterval.invalid'
+  | 'monitor.started'
+  | 'monitor.stopped'
+  | 'config.updated'
+  | 'target.notFound'
+  | 'target.connected'
+  | 'cdp.listFailed'
+  | 'cdp.disconnected'
+  | 'cdp.commandFailed'
+  | 'cdp.commandFailedWithDetail'
+  | 'cdp.socketNotConnected'
+  | 'cdp.commandTimeout'
+  | 'cdp.scriptFailed'
+  | 'prompt.detected'
+  | 'cdp.closed'
+  | 'cdp.timeout'
+  | 'error.raw'
+
+export interface MonitorMessage {
+  key: MonitorMessageKey
+  params?: Record<string, string | number>
+}
+
 export type ConnectionState = 'idle' | 'connecting' | 'connected' | 'disconnected'
 
 export interface MonitorStats {
@@ -19,7 +45,7 @@ export interface MonitorStatus {
   stats: MonitorStats
   targetTitle: string | null
   targetUrl: string | null
-  errorMessage: string | null
+  errorMessage: MonitorMessage | null
 }
 
 export type MonitorEventLevel = 'info' | 'success' | 'warning' | 'error'
@@ -28,14 +54,18 @@ export interface MonitorEvent {
   id: string
   timestamp: number
   level: MonitorEventLevel
-  message: string
+  message: MonitorMessage
 }
 
+export type MonitorActionResult =
+  | { ok: true; status: MonitorStatus }
+  | { ok: false; error: MonitorMessage }
+
 export interface CodexGuardApi {
-  startMonitor: (config?: MonitorConfig) => Promise<MonitorStatus>
+  startMonitor: (config?: MonitorConfig) => Promise<MonitorActionResult>
   stopMonitor: () => Promise<MonitorStatus>
   getMonitorStatus: () => Promise<MonitorStatus>
-  updateConfig: (config: MonitorConfig) => Promise<MonitorStatus>
+  updateConfig: (config: MonitorConfig) => Promise<MonitorActionResult>
   onStatusChanged: (callback: (status: MonitorStatus) => void) => () => void
   onMonitorEvent: (callback: (event: MonitorEvent) => void) => () => void
 }

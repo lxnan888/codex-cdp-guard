@@ -5,6 +5,7 @@ import {
   CircleAlert,
   CircleCheck,
   Clock3,
+  Languages,
   Plug,
   Play,
   RefreshCw,
@@ -17,8 +18,17 @@ import {
   DEFAULT_MONITOR_CONFIG,
   type MonitorConfig,
   type MonitorEvent,
+  type MonitorMessage,
   type MonitorStatus
 } from '../../shared/types'
+import {
+  LOCALE_STORAGE_KEY,
+  resolveLocale,
+  translate,
+  translateMonitorMessage,
+  type Locale,
+  type TranslationKey
+} from './i18n'
 
 const status = ref<MonitorStatus>({
   monitoring: false,
@@ -32,18 +42,42 @@ const status = ref<MonitorStatus>({
 const form = reactive<MonitorConfig>({ ...DEFAULT_MONITOR_CONFIG })
 const events = ref<MonitorEvent[]>([])
 const actionPending = ref(false)
-const formError = ref('')
+const formError = ref<MonitorMessage | null>(null)
+const locale = ref<Locale>(resolveLocale(localStorage.getItem(LOCALE_STORAGE_KEY)))
 let unsubscribeStatus: (() => void) | undefined
 let unsubscribeEvents: (() => void) | undefined
 
-const connectionLabel = computed(() => {
-  const labels: Record<MonitorStatus['connectionState'], string> = {
-    idle: '未连接',
-    connecting: '连接中',
-    connected: '已连接',
-    disconnected: '等待重连'
+document.documentElement.lang = locale.value
+
+function t(key: TranslationKey, params?: Record<string, string | number>): string {
+  return translate(locale.value, key, params)
+}
+
+function messageText(message: MonitorMessage): string {
+  return translateMonitorMessage(locale.value, message)
+}
+
+function rawMessage(error: unknown): MonitorMessage {
+  return {
+    key: 'error.raw',
+    params: { detail: error instanceof Error ? error.message : String(error) }
   }
-  return labels[status.value.connectionState]
+}
+
+function setLocale(nextLocale: Locale): void {
+  locale.value = nextLocale
+  localStorage.setItem(LOCALE_STORAGE_KEY, nextLocale)
+  document.documentElement.lang = nextLocale
+}
+
+const connectionLabel = computed(() => {
+  const labels: Record<MonitorStatus['connectionState'], TranslationKey> = {
+    idle: 'connection.idle',
+    connecting: 'connection.connecting',
+    connected: 'connection.connected',
+    disconnected: 'connection.disconnected'
+  }
+  return t(labels[status.value.connectionState])
 })
 
 const connectionIcon = computed(() => {
@@ -64,11 +98,16 @@ function addEvent(event: MonitorEvent): void {
 
 async function startMonitor(): Promise<void> {
   actionPending.value = true
-  formError.value = ''
+  formError.value = null
   try {
-    status.value = await window.codexGuard.startMonitor({ ...form })
+    const result = await window.codexGuard.startMonitor({ ...form })
+    if (result.ok) {
+      status.value = result.status
+    } else {
+      formError.value = result.error
+    }
   } catch (error) {
-    formError.value = error instanceof Error ? error.message : String(error)
+    formError.value = rawMessage(error)
   } finally {
     actionPending.value = false
   }
@@ -76,11 +115,11 @@ async function startMonitor(): Promise<void> {
 
 async function stopMonitor(): Promise<void> {
   actionPending.value = true
-  formError.value = ''
+  formError.value = null
   try {
     status.value = await window.codexGuard.stopMonitor()
   } catch (error) {
-    formError.value = error instanceof Error ? error.message : String(error)
+    formError.value = rawMessage(error)
   } finally {
     actionPending.value = false
   }
@@ -88,22 +127,27 @@ async function stopMonitor(): Promise<void> {
 
 async function applyConfig(): Promise<void> {
   actionPending.value = true
-  formError.value = ''
+  formError.value = null
   try {
-    status.value = await window.codexGuard.updateConfig({
+    const result = await window.codexGuard.updateConfig({
       host: form.host,
       port: Number(form.port),
       pollIntervalMs: Number(form.pollIntervalMs)
     })
+    if (result.ok) {
+      status.value = result.status
+    } else {
+      formError.value = result.error
+    }
   } catch (error) {
-    formError.value = error instanceof Error ? error.message : String(error)
+    formError.value = rawMessage(error)
   } finally {
     actionPending.value = false
   }
 }
 
 function formatTime(timestamp: number): string {
-  return new Intl.DateTimeFormat('zh-CN', {
+  return new Intl.DateTimeFormat(locale.value, {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
@@ -117,12 +161,18 @@ onMounted(async () => {
   try {
     let initialStatus = await window.codexGuard.getMonitorStatus()
     Object.assign(form, initialStatus.config)
-    if (!initialStatus.monitoring) {
-      initialStatus = await window.codexGuard.startMonitor(initialStatus.config)
-    }
     status.value = initialStatus
+    if (!initialStatus.monitoring) {
+      const result = await window.codexGuard.startMonitor(initialStatus.config)
+      if (result.ok) {
+        initialStatus = result.status
+        status.value = result.status
+      } else {
+        formError.value = result.error
+      }
+    }
   } catch (error) {
-    formError.value = error instanceof Error ? error.message : String(error)
+    formError.value = rawMessage(error)
   }
 })
 
@@ -154,49 +204,72 @@ onBeforeUnmount(() => {
           />
           <span>{{ connectionLabel }}</span>
         </div>
+        <div class="language-switcher" role="group" :aria-label="t('language.switcher')">
+          <Languages class="language-icon" :size="14" aria-hidden="true" />
+          <button
+            class="language-option"
+            :class="{ active: locale === 'zh-CN' }"
+            type="button"
+            :aria-pressed="locale === 'zh-CN'"
+            :title="t('language.toChinese')"
+            @click="setLocale('zh-CN')"
+          >
+            中文
+          </button>
+          <button
+            class="language-option"
+            :class="{ active: locale === 'en-US' }"
+            type="button"
+            :aria-pressed="locale === 'en-US'"
+            :title="t('language.toEnglish')"
+            @click="setLocale('en-US')"
+          >
+            EN
+          </button>
+        </div>
         <button
           v-if="!status.monitoring"
-          class="button button-primary"
+          class="button button-primary monitor-button"
           type="button"
           :disabled="actionPending"
           @click="startMonitor"
         >
           <Play :size="16" fill="currentColor" />
-          开始监控
+          {{ t('action.start') }}
         </button>
         <button
           v-else
-          class="button button-danger"
+          class="button button-danger monitor-button"
           type="button"
           :disabled="actionPending"
           @click="stopMonitor"
         >
           <Square :size="15" fill="currentColor" />
-          停止监控
+          {{ t('action.stop') }}
         </button>
       </div>
     </header>
 
     <main class="main-content">
-      <section class="status-strip" aria-label="监控统计">
+      <section class="status-strip" :aria-label="t('stats.label')">
         <div class="metric">
           <div class="metric-icon metric-green"><Activity :size="18" /></div>
           <div>
-            <span>发现询问</span>
+            <span>{{ t('stats.detections') }}</span>
             <strong>{{ status.stats.detections }}</strong>
           </div>
         </div>
         <div class="metric">
           <div class="metric-icon metric-blue"><ShieldCheck :size="18" /></div>
           <div>
-            <span>已暂停</span>
+            <span>{{ t('stats.snoozes') }}</span>
             <strong>{{ status.stats.snoozes }}</strong>
           </div>
         </div>
         <div class="metric">
           <div class="metric-icon metric-amber"><RefreshCw :size="18" /></div>
           <div>
-            <span>连接失败</span>
+            <span>{{ t('stats.connectionFailures') }}</span>
             <strong>{{ status.stats.connectionFailures }}</strong>
           </div>
         </div>
@@ -206,38 +279,46 @@ onBeforeUnmount(() => {
             <CircleAlert v-else :size="18" />
           </div>
           <div>
-            <span>监控状态</span>
-            <strong class="metric-text">{{ status.monitoring ? '运行中' : '已停止' }}</strong>
+            <span>{{ t('stats.monitoring') }}</span>
+            <strong class="metric-text">
+              {{ status.monitoring ? t('monitor.running') : t('monitor.inactive') }}
+            </strong>
           </div>
         </div>
       </section>
 
       <div v-if="status.errorMessage" class="notice notice-warning" role="status">
         <CircleAlert :size="18" />
-        <span>{{ status.errorMessage }}</span>
+        <span>{{ messageText(status.errorMessage) }}</span>
       </div>
 
       <div class="content-grid">
         <section class="panel settings-panel">
           <div class="panel-heading">
             <div>
-              <h2>连接设置</h2>
-              <p>Codex 页面：{{ status.targetTitle ?? '尚未发现' }}</p>
+              <h2>{{ t('settings.title') }}</h2>
+              <p>
+                {{
+                  t('settings.target', {
+                    target: status.targetTitle ?? t('target.unknown')
+                  })
+                }}
+              </p>
             </div>
             <Plug :size="20" />
           </div>
 
           <form class="settings-form" @submit.prevent="applyConfig">
             <label class="field field-host">
-              <span>主机地址</span>
+              <span>{{ t('settings.host') }}</span>
               <input v-model.trim="form.host" type="text" autocomplete="off" />
             </label>
             <label class="field">
-              <span>端口</span>
+              <span>{{ t('settings.port') }}</span>
               <input v-model.number="form.port" type="number" min="1" max="65535" step="1" />
             </label>
             <label class="field">
-              <span>轮询间隔</span>
+              <span>{{ t('settings.pollInterval') }}</span>
               <div class="input-with-unit">
                 <input
                   v-model.number="form.pollIntervalMs"
@@ -250,11 +331,13 @@ onBeforeUnmount(() => {
               </div>
             </label>
 
-            <div v-if="formError" class="form-error" role="alert">{{ formError }}</div>
+            <div v-if="formError" class="form-error" role="alert">
+              {{ messageText(formError) }}
+            </div>
 
             <button class="button button-secondary save-button" type="submit" :disabled="actionPending">
               <Save :size="16" />
-              应用设置
+              {{ t('settings.apply') }}
             </button>
           </form>
         </section>
@@ -262,8 +345,8 @@ onBeforeUnmount(() => {
         <section class="panel events-panel">
           <div class="panel-heading">
             <div>
-              <h2>最近事件</h2>
-              <p>当前会话最多显示 50 条</p>
+              <h2>{{ t('events.title') }}</h2>
+              <p>{{ t('events.limit') }}</p>
             </div>
             <Clock3 :size="20" />
           </div>
@@ -272,7 +355,7 @@ onBeforeUnmount(() => {
             <article v-for="event in events" :key="event.id" class="event-row">
               <span class="event-dot" :class="`event-${event.level}`" aria-hidden="true"></span>
               <div class="event-copy">
-                <p>{{ event.message }}</p>
+                <p>{{ messageText(event.message) }}</p>
                 <time :datetime="new Date(event.timestamp).toISOString()">
                   {{ formatTime(event.timestamp) }}
                 </time>
@@ -281,7 +364,7 @@ onBeforeUnmount(() => {
           </div>
           <div v-else class="empty-state">
             <Activity :size="24" />
-            <span>暂无事件</span>
+            <span>{{ t('events.empty') }}</span>
           </div>
         </section>
       </div>

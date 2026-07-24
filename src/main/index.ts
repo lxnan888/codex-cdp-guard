@@ -1,7 +1,12 @@
 import { join } from 'node:path'
 import { app, BrowserWindow, ipcMain } from 'electron'
-import { CdpMonitor } from './cdp-monitor'
-import { DEFAULT_MONITOR_CONFIG, type MonitorConfig } from '../shared/types'
+import { CdpMonitor, toMonitorMessage } from './cdp-monitor'
+import {
+  DEFAULT_MONITOR_CONFIG,
+  type MonitorActionResult,
+  type MonitorConfig,
+  type MonitorStatus
+} from '../shared/types'
 
 const monitor = new CdpMonitor(DEFAULT_MONITOR_CONFIG)
 
@@ -13,12 +18,22 @@ function broadcast(channel: string, payload: unknown): void {
   }
 }
 
+function monitorAction(action: () => MonitorStatus): MonitorActionResult {
+  try {
+    return { ok: true, status: action() }
+  } catch (error) {
+    return { ok: false, error: toMonitorMessage(error) }
+  }
+}
+
 function registerIpc(): void {
-  ipcMain.handle('monitor:start', (_event, config?: MonitorConfig) => monitor.start(config))
+  ipcMain.handle('monitor:start', (_event, config?: MonitorConfig) =>
+    monitorAction(() => monitor.start(config))
+  )
   ipcMain.handle('monitor:stop', () => monitor.stop())
   ipcMain.handle('monitor:get-status', () => monitor.getStatus())
   ipcMain.handle('monitor:update-config', (_event, config: MonitorConfig) =>
-    monitor.updateConfig(config)
+    monitorAction(() => monitor.updateConfig(config))
   )
 
   monitor.on('status', (status) => broadcast('monitor:status-changed', status))

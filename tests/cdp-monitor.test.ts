@@ -7,6 +7,7 @@ import {
   selectCodexTarget,
   validateMonitorConfig
 } from '../src/main/cdp-monitor'
+import type { MonitorEvent } from '../src/shared/types'
 
 interface FakeCdpServer {
   port: number
@@ -136,10 +137,10 @@ describe('监控配置', () => {
   it('拒绝无效端口和过快轮询', () => {
     expect(() =>
       validateMonitorConfig({ host: '127.0.0.1', port: 70_000, pollIntervalMs: 250 })
-    ).toThrow('端口')
+    ).toThrow('config.port.invalid')
     expect(() =>
       validateMonitorConfig({ host: '127.0.0.1', port: 9229, pollIntervalMs: 50 })
-    ).toThrow('轮询间隔')
+    ).toThrow('config.pollInterval.invalid')
   })
 })
 
@@ -151,6 +152,8 @@ describe('CdpMonitor', () => {
       port: fakeServer.port,
       pollIntervalMs: 100
     })
+    const events: MonitorEvent[] = []
+    monitor.on('monitor-event', (event: MonitorEvent) => events.push(event))
 
     monitor.start()
     await waitFor(() => monitor.getStatus().stats.snoozes === 1)
@@ -158,6 +161,9 @@ describe('CdpMonitor', () => {
     expect(monitor.getStatus().connectionState).toBe('connected')
     expect(fakeServer.methods).toContain('Runtime.enable')
     expect(fakeServer.methods).toContain('Runtime.evaluate')
+    expect(events.map((event) => event.message.key)).toEqual(
+      expect.arrayContaining(['monitor.started', 'target.connected', 'prompt.detected'])
+    )
 
     await new Promise((resolve) => setTimeout(resolve, 240))
     expect(monitor.getStatus().stats.snoozes).toBe(1)
@@ -177,13 +183,21 @@ describe('CdpMonitor', () => {
       port: fakeServer.port,
       pollIntervalMs: 100
     })
+    const events: MonitorEvent[] = []
+    monitor.on('monitor-event', (event: MonitorEvent) => events.push(event))
 
     monitor.start()
     await waitFor(() => monitor.getStatus().connectionState === 'connected')
     fakeServer.closeFirstConnection()
-    await waitFor(() => fakeServer.getConnectionCount() >= 2)
+    await waitFor(
+      () =>
+        fakeServer.getConnectionCount() >= 2 &&
+        monitor.getStatus().connectionState === 'connected'
+    )
 
     expect(monitor.getStatus().stats.connectionFailures).toBeGreaterThanOrEqual(1)
+    expect(monitor.getStatus().errorMessage).toBeNull()
+    expect(events.some((event) => event.message.key === 'cdp.disconnected')).toBe(true)
     monitor.stop()
   })
 })
